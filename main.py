@@ -28,10 +28,6 @@ def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_cla
     recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
     f1 = torchmetrics.F1Score(task="multiclass", num_classes=num_classes)
 
-    acc = 0
-    rec = 0
-    f1_score = 0
-
     for epoch in range(1, epochs + 1):
         with tqdm(train_loader, unit="batch") as loader:
         # Iterate over the data
@@ -44,7 +40,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_cla
                 optimizer.zero_grad()
 
                 # Forward pass
-                output = model(data)
+                output = model(data).logits
                 pred = output.argmax(-1)
 
                 # Compute the loss
@@ -56,12 +52,12 @@ def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_cla
                 # Update the weights
                 optimizer.step()
 
-                acc += accuracy(pred, target)
-                rec += recall(pred, target)
-                f1_score += f1(pred, target)
+                acc = accuracy(pred, target).numpy()
+                rec = recall(pred, target).numpy()
+                f1_score = f1(pred, target).numpy()
 
                 # Print the loss and metrics
-                loader.set_postfix(loss=loss.item(), accuracy=acc.numpy() / epoch, recall=rec.numpy() / epoch, f1=f1_score.numpy() / epoch)
+                loader.set_postfix(loss=loss.item(), accuracy=acc, recall=rec, f1=f1_score)
 
         if epoch % 5 == 0:
             torch.save(model.state_dict(), join(results_path, "model.pth"))
@@ -94,18 +90,21 @@ def validation(model, val_loader, criterion, num_classes, device):
             data, target = data.to(device), target.to(device)
 
             # Forward pass
-            output = model(data)
+            output = model(data).logits
             pred = output.argmax(-1)
 
-            # Compute the loss
-            loss = criterion(output, target)
+            acc = accuracy(pred, target).numpy()
+            rec = recall(pred, target).numpy()
+            f1_score = f1(pred, target).numpy()
 
-            acc = accuracy(pred, target)
-            rec = recall(pred, target)
-            f1_score = f1(pred, target)
+            if criterion is not None:
+                # Compute the loss
+                loss = criterion(output, target)
 
-            # Print the error and metrics
-            loader.set_postfix(loss=loss.item(), accuracy=acc.numpy(), recall=rec.numpy(), f1=f1_score.numpy())
+                # Print the loss and metrics
+                loader.set_postfix(loss=loss.item(), accuracy=acc, recall=rec, f1=f1_score)
+            else:
+                loader.set_postfix(accuracy=acc, recall=rec, f1=f1_score)
 
 def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, device):
     # Define the model
@@ -121,7 +120,8 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     train_loader, val_loader, test_loader, num_classes = split_loader(path_to_data, img_size, batch_size)
     print("Data loaded")
 
-    model.head = nn.Linear(model.head.in_features, num_classes)
+    # model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
+    model.classifier = nn.Linear(model.classifier.in_features, num_classes)
 
     print(model)
 
@@ -130,12 +130,12 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
 
     print(f"Number of classes: {num_classes}")
 
-    # # Train the model
-    # print("Training started")
-    # train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path)
-    #
-    # # Test the model
-    # validation(model, test_loader, num_classes, device)
+    # Train the model
+    print("Training started")
+    train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path)
+
+    # Test the model
+    validation(model, val_loader, None, num_classes, device)
 
 
 if __name__ == "__main__":
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("--path_to_data", type=str, default="./data", help="Path to the data")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--epochs", type=int, default=30, help="Number of epochs")
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--results", type=str, default="./results/", help="Path to results")
     parser.add_argument("--img_size", type=int, default=224, help="Image size")
     parser.add_argument("--model_name", type=str, default="tiny", help="Model name")

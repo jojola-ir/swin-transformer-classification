@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
+import torch.nn.functional as F
 
 from torchvision import models
 
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+
+from transformers import SwinForImageClassification
 
 
 
@@ -758,6 +761,24 @@ class SUNet(nn.Module):
         return flops
 
 
+class Net(nn.Module):
+
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv = nn.Conv2d(3, 18, kernel_size=3, stride=1, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        self.fc1 = nn.Linear(18 * 16 * 16, 64)
+        self.fc2 = nn.Linear(64, 3)
+
+    def forward(self, x):
+        x = F.relu(self.conv(x))
+        x = self.pool(x)
+        x = x.view(-1, 18 * 16 * 16)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+
 def build_model(model_name, img_size=224, in_chans=3, embed_dim=96, depth=[2, 2, 2, 2], num_heads=[3, 6, 12, 24]):
     """Build a Swin-Transformer or Swin-Transformer U-Net model based on the model name.
     Args:
@@ -765,8 +786,11 @@ def build_model(model_name, img_size=224, in_chans=3, embed_dim=96, depth=[2, 2,
     Returns:
         model (nn.Module): The model.
     """
-    if model_name == "tiny":
-        model = models.swin_v2_t()
+    if model_name == "vgg11":
+        model = Net()
+    elif model_name == "tiny":
+        model = SwinForImageClassification.from_pretrained("microsoft/swin-tiny-patch4-window7-224")
+        # model = models.swin_v2_t()
     elif model_name == "small":
         model = models.swin_v2_s(weights='IMAGENET1K_V1')
     elif model_name == "base":
