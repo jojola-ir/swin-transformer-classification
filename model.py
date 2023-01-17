@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
-import torch.nn.functional as F
 
 from torchvision import models
 
@@ -761,36 +760,48 @@ class SUNet(nn.Module):
         return flops
 
 
-class Net(nn.Module):
-
+class Identity(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
-        self.conv = nn.Conv2d(3, 18, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.fc1 = nn.Linear(18 * 16 * 16, 64)
-        self.fc2 = nn.Linear(64, 3)
+        super().__init__()
 
     def forward(self, x):
-        x = F.relu(self.conv(x))
-        x = self.pool(x)
-        x = x.view(-1, 18 * 16 * 16)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
         return x
 
 
-def build_model(model_name, img_size=224, in_chans=3, embed_dim=96, depth=[2, 2, 2, 2], num_heads=[3, 6, 12, 24]):
+class CustomSwinSegModel(nn.Module):
+    """Creates a custom model."""
+    def __init__(self, model_name, checkpoint, upscale_factor=32):
+        super(CustomSwinSegModel, self).__init__()
+        self.model_name = model_name
+
+        swin = SwinForImageClassification(add_pooling_layer=False).from_pretrained(checkpoint)
+        swin = nn.Sequential(*list(swin.children()))[0]
+        # swin.pooler = Identity()
+
+        self.model = swin
+        self.decoder = nn.Sequential(nn.Conv2d(768, 3072, kernel_size=(1, 1), stride=(1, 1)),
+                                     nn.PixelShuffle(upscale_factor=32))
+
+    def forward(self, x):
+        x = self.model(x).last_hidden_state
+        print(x.shape)
+        x = self.decoder(x)
+        return x
+
+
+def build_model(model_name, img_size=224, in_chans=3, embed_dim=96, depth=[2, 2, 2, 2], num_heads=[3, 6, 12, 24], segmentation=False):
     """Build a Swin-Transformer or Swin-Transformer U-Net model based on the model name.
     Args:
         model_name (str): The name of the model to build.
     Returns:
         model (nn.Module): The model.
     """
-    if model_name == "vgg11":
-        model = Net()
-    elif model_name == "tiny":
-        model = SwinForImageClassification.from_pretrained("microsoft/swin-tiny-patch4-window7-224")
-        # model = models.swin_v2_t()
+    if model_name == "tiny":
+        cp = "microsoft/swin-tiny-patch4-window7-224"
+        if segmentation:
+            model = CustomSwinSegModel(model_name, checkpoint=cp)
+        else:
+            model = SwinForImageClassification.from_pretrained(cp)
     elif model_name == "small":
         model = models.swin_v2_s(weights='IMAGENET1K_V1')
     elif model_name == "base":
@@ -815,18 +826,21 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
-        device = torch.device("mps")
+        device = torch.device("cpu")
     else:
         device = torch.device("cpu")
 
     print(f"Used devide : {device}")
 
-    x = torch.randn((1, 3, 64, 64))
-
-    model = build_model("STUnet")
+    model = build_model("tiny", segmentation=True)
     model.to(device)
 
     print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
+
+    x = torch.randn((1, 3, 224, 224))
+    output = model(x.to(device))
+    # print(f"Output shape: {output.last_hidden_state.shape}")
+    print(f"Output shape: {output.shape}")

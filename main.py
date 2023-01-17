@@ -106,9 +106,9 @@ def validation(model, val_loader, criterion, num_classes, device):
             else:
                 loader.set_postfix(accuracy=acc, recall=rec, f1=f1_score)
 
-def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, device):
+def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, segmentation, device):
     # Define the model
-    model = build_model(model_name).to(device)
+    model = build_model(model_name=model_name, segmentation=segmentation).to(device)
 
     # Define the loss function
     criterion = nn.CrossEntropyLoss()
@@ -120,8 +120,8 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     train_loader, val_loader, test_loader, num_classes = split_loader(path_to_data, img_size, batch_size)
     print("Data loaded")
 
-    # model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
-    model.classifier = nn.Linear(model.classifier.in_features, num_classes)
+    if not segmentation:
+        model.classifier = nn.Linear(model.classifier.in_features, num_classes)
 
     print(model)
 
@@ -130,12 +130,12 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
 
     print(f"Number of classes: {num_classes}")
 
-    # Train the model
-    print("Training started")
-    train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path)
-
-    # Test the model
-    validation(model, val_loader, None, num_classes, device)
+    # # Train the model
+    # print("Training started")
+    # train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path)
+    #
+    # # Test the model
+    # validation(model, val_loader, None, num_classes, device)
 
 
 if __name__ == "__main__":
@@ -148,6 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("--results", type=str, default="./results/", help="Path to results")
     parser.add_argument("--img_size", type=int, default=224, help="Image size")
     parser.add_argument("--model_name", type=str, default="tiny", help="Model name")
+    parser.add_argument("--segmentation", "-s", action="store_true", help="Segmentation")
 
     args = parser.parse_args()
 
@@ -158,6 +159,7 @@ if __name__ == "__main__":
     results_path = args.results
     img_size = args.img_size
     model_name = args.model_name
+    segmentation = args.segmentation
 
     # Create the results directory
     if not os.path.exists(results_path):
@@ -173,4 +175,4 @@ if __name__ == "__main__":
 
     print(f"Using device: {device}")
 
-    main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, device)
+    main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, segmentation, device)
