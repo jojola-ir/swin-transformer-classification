@@ -6,9 +6,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchmetrics
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataloader import split_loader
+from dataloader import CustomDataLoader, split_classification_loader
 from metrics import AveragedHausdorffLoss
 from model import build_model
 
@@ -186,10 +187,39 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     # Define the data loaders
-    train_loader, val_loader, test_loader, num_classes = split_loader(path_to_data, img_size, batch_size)
+    if model_type == "classification":
+        train_loader, val_loader, test_loader, num_classes = split_classification_loader(path_to_data, img_size, batch_size)
+    elif model_type == "segmentation":
+        train_dataset = CustomDataLoader(join(path_to_data, "train/"), img_size, dataset_type="train")
+        val_dataset = CustomDataLoader(join(path_to_data, "val/"), img_size, dataset_type="val")
+        test_dataset = CustomDataLoader(join(path_to_data, "test/"), img_size, dataset_type="test")
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=True,
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            pin_memory=True,
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            pin_memory=True,
+        )
+
+        for data, target in train_loader:
+            print(data.shape)
+            break
+
     print("Data loaded")
 
-    print(model)
+    # print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
@@ -233,6 +263,8 @@ if __name__ == "__main__":
         model_type = "regression"
     else:
         model_type = "classification"
+
+    print(f"Model type: {model_type}")
 
     # Create the results directory
     if not os.path.exists(results_path):

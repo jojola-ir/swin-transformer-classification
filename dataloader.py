@@ -1,10 +1,12 @@
+import glob
 import os
 from os.path import join
 
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import random_split
+from PIL import Image
+from torch.utils.data import Dataset, random_split
 
 
 def get_noisy_image(image, noise_parameter=0.2):
@@ -15,42 +17,45 @@ def get_noisy_image(image, noise_parameter=0.2):
     """
     image_shape = image.shape
 
-    # noise_type = np.random.choice(['gaussian', 'poisson', 'bernoulli'])
-    # if noise_type == 'gaussian':
-    #     noise = torch.normal(0, noise_parameter, image_shape)
-    #     noisy_image = (image + noise).clip(0, 1)
-    # elif noise_type == 'poisson':
-    #     a = noise_parameter * torch.ones(image_shape)
-    #     noise = torch.poisson(a)
-    #     noise /= noise.max()
-    #     noisy_image = (image + noise).clip(0, 1)
-    # elif noise_type == 'bernoulli':
-    #     noise = torch.bernoulli(noise_parameter * torch.ones(image_shape))
-    #     noisy_image = (image * noise).clip(0, 1)
-
     noise = torch.normal(0, noise_parameter, image_shape)
     noisy_image = (image + noise).clip(0, 1)
 
     return noisy_image
 
 
-def transformations(img_size):
+def train_transformation(img_size):
     """Applies transformations to an image.
 
     Args:
         image: image, np.array
     """
     transform = transforms.Compose([
+        transforms.RandomResizedCrop(img_size),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        # transforms.ConvertImageDtype(torch.float),
-        transforms.Resize((img_size, img_size)),
-        transforms.Normalize(mean=(0,),
-                             std=(1,)),
+        transforms.Normalize(mean=(0.5,),
+                             std=(0.22,)),
     ])
     return transform
 
 
-def split_loader(path, img_size, batch_size):
+def test_transformation(img_size):
+    """Applies transformations to an image.
+
+    Args:
+        image: image, np.array
+    """
+    transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.5, ),
+                             std=(0.22, )),
+    ])
+    return transform
+
+
+def split_classification_loader(path, img_size, batch_size):
     """Load the dataset.
     Args:
         path (str): The path to the dataset.
@@ -62,21 +67,8 @@ def split_loader(path, img_size, batch_size):
     """
 
     # Define the transforms
-    transform_train = transforms.Compose([
-        transforms.RandomResizedCrop(img_size),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(img_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
-    ])
+    transform_train = train_transformation(img_size)
+    transform_test = test_transformation(img_size)
 
     # Load the dataset
     train_path = join(path, "train/")
@@ -110,3 +102,34 @@ def split_loader(path, img_size, batch_size):
         test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader, test_loader, num_classes
+
+
+class CustomDataLoader(Dataset):
+    def __init__(self, folder_path, img_size, dataset_type):
+        super(CustomDataLoader, self).__init__()
+        self.img_files = glob.glob(os.path.join(folder_path, "images/", "*.png"))
+        self.mask_files = []
+
+        for img_path in self.img_files:
+            self.mask_files.append(os.path.join(folder_path, "masks/", os.path.basename(img_path)))
+
+        self.transform_train = train_transformation(img_size)
+        self.transform_test = test_transformation(img_size)
+
+        self.dataset_type = dataset_type
+
+    def __getitem__(self, index):
+        img_path = self.img_files[index]
+        mask_path = self.mask_files[index]
+        if self.dataset_type == "train":
+            data = self.transform_train(Image.open(img_path))
+            label = self.transform_train(Image.open(mask_path))
+        elif self.dataset_type == "val" or self.dataset_type == "test":
+            data = self.transform_test(Image.open(img_path))
+            label = self.transform_test(Image.open(mask_path))
+        else:
+            raise ValueError("Invalid dataset type")
+        return data, label
+
+    def __len__(self):
+        return len(self.img_files)

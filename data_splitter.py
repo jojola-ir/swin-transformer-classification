@@ -94,7 +94,7 @@ def generate_dataset(path_to_images, path_to_output, organ="heart", test=False):
         maskPathInput = os.path.join(path_to_images, 'labelsTr/')
 
         imageSliceOutput = os.path.join(path_to_output, 'images/')
-        maskSliceOutput = os.path.join(path_to_output, 'mask/')
+        maskSliceOutput = os.path.join(path_to_output, 'masks/')
 
         if os.path.exists(imageSliceOutput) is False:
             os.makedirs(imageSliceOutput)
