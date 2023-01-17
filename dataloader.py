@@ -33,8 +33,8 @@ def train_transformation(img_size):
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean=(0.5,),
-                             std=(0.22,)),
+        transforms.Normalize(mean=(0,),
+                             std=(1,)),
     ])
     return transform
 
@@ -49,8 +49,8 @@ def test_transformation(img_size):
         transforms.Resize(256),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        transforms.Normalize(mean=(0.5,),
-                             std=(0.22,)),
+        transforms.Normalize(mean=(0,),
+                             std=(1,)),
     ])
     return transform
 
@@ -123,9 +123,11 @@ class CustomDataLoader(Dataset):
         mask_path = self.mask_files[index]
         if self.dataset_type == "train":
             data = self.transform_train(Image.open(img_path))
+            data = torch.cat((data, data, data), 0)
             label = self.transform_train(Image.open(mask_path))
         elif self.dataset_type == "val" or self.dataset_type == "test":
             data = self.transform_test(Image.open(img_path))
+            data = torch.cat((data, data, data), 0)
             label = self.transform_test(Image.open(mask_path))
         else:
             raise ValueError("Invalid dataset type")

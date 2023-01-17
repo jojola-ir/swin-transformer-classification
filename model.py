@@ -16,7 +16,7 @@ class Identity(nn.Module):
 class CustomSwinSegModel(nn.Module):
     """Creates a custom model."""
 
-    def __init__(self, model_name, checkpoint, upscale_factor=32):
+    def __init__(self, model_name, checkpoint, dim=3, upscale_factor=32):
         super(CustomSwinSegModel, self).__init__()
         self.model_name = model_name
 
@@ -30,7 +30,8 @@ class CustomSwinSegModel(nn.Module):
         self.model = swin
 
         self.decoder = nn.Sequential(nn.Conv2d(embed_dim, num_features, kernel_size=(1, 1), stride=(1, 1)),
-                                     nn.PixelShuffle(upscale_factor=upscale_factor))
+                                     nn.PixelShuffle(upscale_factor=upscale_factor),
+                                     nn.Conv2d(3, dim, kernel_size=(1, 1), stride=(1, 1)))
 
     def forward(self, x):
         x = self.model(x).last_hidden_state
@@ -45,7 +46,7 @@ class CustomSwinSegModel(nn.Module):
         return x
 
 
-def build_model(model_name, model_type):
+def build_model(model_name, model_type, dim):
     """Build a tiny Swin-Transformer.
     Args:
         model_name (str): The name of the model to build.
@@ -54,7 +55,7 @@ def build_model(model_name, model_type):
     """
     cp = "microsoft/swin-tiny-patch4-window7-224"
     if model_type == "segmentation" or model_type == "regression":
-        model = CustomSwinSegModel(model_name, checkpoint=cp)
+        model = CustomSwinSegModel(model_name, checkpoint=cp, dim=dim)
     elif model_type == "classification":
         model = SwinForImageClassification.from_pretrained(cp)
     else:
@@ -73,8 +74,10 @@ if __name__ == "__main__":
 
     print(f"Used devide : {device}")
 
-    model = build_model("tiny", segmentation=True)
+    model = build_model(model_name="tiny", model_type="segmentation", dim=1)
     model.to(device)
+
+    print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
