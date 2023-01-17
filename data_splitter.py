@@ -160,8 +160,8 @@ def main():
     parser.add_argument("--generate", "-g", default=False, help="generate slices",
                         action="store_true")
     parser.add_argument("--datapath", help="path to the dataset")
-    parser.add_argument("--output", "-o", help="path to the output")
-    parser.add_argument("--test", "-t", help="Generate test set", default=False, action="store_true")
+    parser.add_argument("--output", "-o", help="path to the output", default="data/")
+    parser.add_argument("--test", help="Generate test set", default=False, action="store_true")
     parser.add_argument("--testrate", "-t", help="part of test set", default=0.2)
     parser.add_argument("--clear", "-c", help="clear useless images", default=False, action="store_true")
 
@@ -179,7 +179,7 @@ def main():
         output = args.output
         generate_dataset(datapath, output, test=test)
 
-    random_splitter(datapath, output, test_rate, clear)
+    random_splitter(output, output, test_rate, clear)
 
 
 if __name__ == "__main__":
