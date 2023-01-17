@@ -188,7 +188,8 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
 
     # Define the data loaders
     if model_type == "classification":
-        train_loader, val_loader, test_loader, num_classes = split_classification_loader(path_to_data, img_size, batch_size)
+        train_loader, val_loader, test_loader, num_classes = split_classification_loader(path_to_data, img_size,
+                                                                                         batch_size)
     elif model_type == "segmentation":
         train_dataset = CustomDataLoader(join(path_to_data, "train/"), img_size, dataset_type="train")
         val_dataset = CustomDataLoader(join(path_to_data, "val/"), img_size, dataset_type="val")

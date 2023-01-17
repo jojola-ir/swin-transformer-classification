@@ -49,8 +49,8 @@ def test_transformation(img_size):
         transforms.Resize(256),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        transforms.Normalize(mean=(0.5, ),
-                             std=(0.22, )),
+        transforms.Normalize(mean=(0.5,),
+                             std=(0.22,)),
     ])
     return transform
 
