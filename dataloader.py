@@ -4,9 +4,7 @@ from os.path import join
 import torch
 import torchvision
 import torchvision.transforms as transforms
-
 from torch.utils.data import random_split
-
 
 
 def get_noisy_image(image, noise_parameter=0.2):
@@ -46,8 +44,8 @@ def transformations(img_size):
         transforms.ToTensor(),
         # transforms.ConvertImageDtype(torch.float),
         transforms.Resize((img_size, img_size)),
-        transforms.Normalize(mean=(0, ),
-                             std=(1, )),
+        transforms.Normalize(mean=(0,),
+                             std=(1,)),
     ])
     return transform
 

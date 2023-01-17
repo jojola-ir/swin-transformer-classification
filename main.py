@@ -9,10 +9,11 @@ import torchmetrics
 from tqdm import tqdm
 
 from dataloader import split_loader
+from metrics import AveragedHausdorffLoss
 from model import build_model
 
 
-def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path=None):
+def train(model, train_loader, val_loader, optimizer, epochs, num_classes, device, model_type, results_path=None):
     """Train the model.
     Args:
         model (nn.Module): The model.
@@ -24,13 +25,28 @@ def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_cla
     # Set the model to training mode
     model.train()
 
-    accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
-    recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
+    if model_type == "classification":
+        criterion = nn.CrossEntropyLoss()
+        accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
+    elif model_type == "segmentation":
+        criterion = nn.BCEWithLogitsLoss()
+        hausdorff = AveragedHausdorffLoss()
+    elif model_type == "regression":
+        criterion = nn.MSELoss()
+        mse = torchmetrics.MeanSquaredError()
+    else:
+        raise ValueError("Model type not recognized")
+
     f1 = torchmetrics.F1Score(task="multiclass", num_classes=num_classes)
+
+    acc_list = []
+    rec_list = []
+    f1_list = []
 
     for epoch in range(1, epochs + 1):
         with tqdm(train_loader, unit="batch") as loader:
-        # Iterate over the data
+            # Iterate over the data
             for data, target in loader:
                 loader.set_description(f"Epoch {epoch}")
                 # Move the data to the device
@@ -52,22 +68,37 @@ def train(model, train_loader, val_loader, criterion, optimizer, epochs, num_cla
                 # Update the weights
                 optimizer.step()
 
-                acc = accuracy(pred, target).numpy()
-                rec = recall(pred, target).numpy()
                 f1_score = f1(pred, target).numpy()
 
                 # Print the loss and metrics
-                loader.set_postfix(loss=loss.item(), accuracy=acc, recall=rec, f1=f1_score)
+                if model_type == "classification":
+                    acc = accuracy(pred, target).numpy()
+                    rec = recall(pred, target).numpy()
 
-        if epoch % 5 == 0:
-            torch.save(model.state_dict(), join(results_path, "model.pth"))
+                    acc_list.append(acc)
+                    rec_list.append(rec)
+                    f1_list.append(f1_score)
 
-        validation(model, val_loader, criterion, num_classes, device)
+                    loader.set_postfix(loss=loss.item(), accuracy=acc_list / len(acc_list),
+                                       recall=rec_list / len(rec_list),
+                                       f1=f1_list / len(f1_list))
+                elif model_type == "segmentation":
+                    hausdorff_score = hausdorff(output, target).numpy()
+                    loader.set_postfix(loss=loss.item(), f1=f1_score, hausdorff=hausdorff_score)
+                elif model_type == "regression":
+                    mse_score = mse(output, target).numpy()
+                    loader.set_postfix(loss=loss.item(), mse=mse_score)
 
-    torch.save(model.state_dict(), join(results_path, "model.pth"))
+        if epoch % 1 == 0:
+            torch.save(model.state_dict(), join(results_path, f"model_{model_type}.pth"))
+
+        if epoch != epochs:
+            validation(model, val_loader, num_classes, model_type, device)
+
+    torch.save(model.state_dict(), join(results_path, f"model_{model_type}.pth"))
 
 
-def validation(model, val_loader, criterion, num_classes, device):
+def validation(model, val_loader, num_classes, model_type, device):
     """Validate the model.
     Args:
         model (nn.Module): The model.
@@ -78,9 +109,24 @@ def validation(model, val_loader, criterion, num_classes, device):
     # Set the model to evaluation
     model.eval()
 
-    accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
-    recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
+    if model_type == "classification":
+        criterion = nn.CrossEntropyLoss()
+        accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
+        recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
+    elif model_type == "segmentation":
+        criterion = nn.BCEWithLogitsLoss()
+        hausdorff = AveragedHausdorffLoss()
+    elif model_type == "regression":
+        criterion = nn.MSELoss()
+        mse = torchmetrics.MeanSquaredError()
+    else:
+        raise ValueError("Model type not recognized")
+
     f1 = torchmetrics.F1Score(task="multiclass", num_classes=num_classes)
+
+    acc_list = []
+    rec_list = []
+    f1_list = []
 
     with tqdm(val_loader, unit="batch") as loader:
         # Iterate over the data
@@ -92,26 +138,49 @@ def validation(model, val_loader, criterion, num_classes, device):
             # Forward pass
             output = model(data).logits
             pred = output.argmax(-1)
-
-            acc = accuracy(pred, target).numpy()
-            rec = recall(pred, target).numpy()
             f1_score = f1(pred, target).numpy()
+
+            f1_list.append(f1_score)
+
+            # Print the loss and metrics
+            if model_type == "classification":
+                acc = accuracy(pred, target).numpy()
+                rec = recall(pred, target).numpy()
+
+                acc_list.append(acc)
+                rec_list.append(rec)
+            elif model_type == "segmentation":
+                hausdorff_score = hausdorff(output, target).numpy()
+            elif model_type == "regression":
+                mse_score = mse(output, target).numpy()
 
             if criterion is not None:
                 # Compute the loss
                 loss = criterion(output, target)
 
                 # Print the loss and metrics
-                loader.set_postfix(loss=loss.item(), accuracy=acc, recall=rec, f1=f1_score)
+                if model_type == "classification":
+                    loader.set_postfix(loss=loss.item(), accuracy=acc_list / len(acc_list),
+                                       recall=rec_list / len(rec_list),
+                                       f1=f1_list / len(f1_list))
+                elif model_type == "segmentation":
+                    loader.set_postfix(loss=loss.item(), f1=f1_score, hausdorff=hausdorff_score)
+                elif model_type == "regression":
+                    loader.set_postfix(loss=loss.item(), mse=mse_score)
             else:
-                loader.set_postfix(accuracy=acc, recall=rec, f1=f1_score)
+                if model_type == "classification":
+                    loader.set_postfix(accuracy=acc_list / len(acc_list),
+                                       recall=rec_list / len(rec_list),
+                                       f1=f1_list / len(f1_list))
+                elif model_type == "segmentation":
+                    loader.set_postfix(f1=f1_score, hausdorff=hausdorff_score)
+                elif model_type == "regression":
+                    loader.set_postfix(mse=mse_score)
 
-def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, segmentation, device):
+
+def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, model_type, device):
     # Define the model
-    model = build_model(model_name=model_name, segmentation=segmentation).to(device)
-
-    # Define the loss function
-    criterion = nn.CrossEntropyLoss()
+    model = build_model(model_name=model_name, model_type=model_type).to(device)
 
     # Define the optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -120,22 +189,17 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     train_loader, val_loader, test_loader, num_classes = split_loader(path_to_data, img_size, batch_size)
     print("Data loaded")
 
-    if not segmentation:
-        model.classifier = nn.Linear(model.classifier.in_features, num_classes)
-
     print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
 
-    print(f"Number of classes: {num_classes}")
-
     # # Train the model
     # print("Training started")
-    # train(model, train_loader, val_loader, criterion, optimizer, epochs, num_classes, device, results_path)
+    # train(model, train_loader, val_loader, optimizer, epochs, num_classes, device, results_path)
     #
     # # Test the model
-    # validation(model, val_loader, None, num_classes, device)
+    # validation(model, val_loader, num_classes, model_type, device)
 
 
 if __name__ == "__main__":
@@ -149,6 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--img_size", type=int, default=224, help="Image size")
     parser.add_argument("--model_name", type=str, default="tiny", help="Model name")
     parser.add_argument("--segmentation", "-s", action="store_true", help="Segmentation")
+    parser.add_argument("--regression", "-r", action="store_true", help="Regression")
 
     args = parser.parse_args()
 
@@ -160,6 +225,14 @@ if __name__ == "__main__":
     img_size = args.img_size
     model_name = args.model_name
     segmentation = args.segmentation
+    regression = args.regression
+
+    if segmentation:
+        model_type = "segmentation"
+    elif regression:
+        model_type = "regression"
+    else:
+        model_type = "classification"
 
     # Create the results directory
     if not os.path.exists(results_path):
@@ -175,4 +248,4 @@ if __name__ == "__main__":
 
     print(f"Using device: {device}")
 
-    main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, segmentation, device)
+    main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, model_type, device)
