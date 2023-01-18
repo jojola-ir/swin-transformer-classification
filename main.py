@@ -48,7 +48,7 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
         with tqdm(train_loader, unit="batch") as loader:
             # Iterate over the data
             for data, target in loader:
-                loader.set_description(f"Epoch {epoch}")
+                loader.set_description(f"Epoch {epoch} / {epochs}")
                 # Move the data to the device
                 data, target = data.to(device), target.to(device)
 
@@ -90,7 +90,7 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
                 elif model_type == "segmentation":
                     loader.set_postfix(loss=loss.item(), f1=f1_score)
                 elif model_type == "regression":
-                    mse_score = mse(output, target).numpy()
+                    mse_score = mse(output.detach(), target).numpy()
                     loader.set_postfix(loss=loss.item(), mse=mse_score)
 
         if epoch % 1 == 0:
@@ -157,7 +157,7 @@ def validation(model, val_loader, num_classes, model_type, device):
                 acc_list.append(acc)
                 rec_list.append(rec)
             elif model_type == "regression":
-                mse_score = mse(output, target).numpy()
+                mse_score = mse(output.detach(), target).numpy()
 
             if criterion is not None:
                 # Compute the loss
@@ -198,7 +198,7 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
 
         dim = target.shape[1]
 
-    elif model_type == "segmentation":
+    elif model_type == "segmentation" or model_type == "regression":
         train_dataset = CustomDataLoader(join(path_to_data, "train/"), img_size, dataset_type="train")
         val_dataset = CustomDataLoader(join(path_to_data, "val/"), img_size, dataset_type="val")
         test_dataset = CustomDataLoader(join(path_to_data, "test/"), img_size, dataset_type="test")
@@ -223,7 +223,7 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
         )
 
         for data, target in train_loader:
-            print(data.shape)
+            print(f"Data shape: {data.shape}")
             break
 
         dim = target.shape[1]
@@ -236,7 +236,7 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
 
     print("Data loaded")
 
-    # print(model)
+    print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
@@ -253,8 +253,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch Swin Transformer reimplementation")
 
     parser.add_argument("--path_to_data", type=str, default="./data", help="Path to the data")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--epochs", type=int, default=30, help="Number of epochs")
+    parser.add_argument("--batch_size", "-b", type=int, default=32, help="Batch size")
+    parser.add_argument("--epochs", "-e", type=int, default=30, help="Number of epochs")
     parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--results", type=str, default="./results/", help="Path to results")
     parser.add_argument("--img_size", type=int, default=224, help="Image size")

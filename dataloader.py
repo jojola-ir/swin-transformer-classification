@@ -2,11 +2,12 @@ import glob
 import os
 from os.path import join
 
+import imageio.v2 as imageio
 import torch
 import torchvision
 import torchvision.transforms as transforms
 from PIL import Image
-from torch.utils.data import Dataset, random_split
+from torch.utils.data import Dataset, random_split, DataLoader
 
 
 def get_noisy_image(image, noise_parameter=0.2):
@@ -33,8 +34,8 @@ def train_transformation(img_size):
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean=(0,),
-                             std=(1,)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
     return transform
 
@@ -49,8 +50,8 @@ def test_transformation(img_size):
         transforms.Resize(256),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        transforms.Normalize(mean=(0,),
-                             std=(1,)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
     return transform
 
@@ -122,16 +123,51 @@ class CustomDataLoader(Dataset):
         img_path = self.img_files[index]
         mask_path = self.mask_files[index]
         if self.dataset_type == "train":
-            data = self.transform_train(Image.open(img_path))
-            data = torch.cat((data, data, data), 0)
-            label = self.transform_train(Image.open(mask_path))
+            data = self.transform_train(Image.open(img_path).convert("RGB"))
+            label = self.transform_train(Image.open(mask_path).convert("RGB"))
         elif self.dataset_type == "val" or self.dataset_type == "test":
-            data = self.transform_test(Image.open(img_path))
-            data = torch.cat((data, data, data), 0)
-            label = self.transform_test(Image.open(mask_path))
+            data = self.transform_test(Image.open(img_path).convert("RGB"))
+            label = self.transform_test(Image.open(mask_path).convert("RGB"))
         else:
             raise ValueError("Invalid dataset type")
         return data, label
 
     def __len__(self):
         return len(self.img_files)
+
+
+
+if __name__ == "__main__":
+    path = "/Users/irina/Documents/Etudes/DS/datasets/GAN/monet_style_dataset/All/"
+
+    img_size = 224
+    batch_size = 8
+    img = imageio.imread(join(path, "train/images/image37.png"), pilmode='RGB')
+    # print(img.shape)
+
+    train_dataset = CustomDataLoader(join(path, "train/"), img_size, dataset_type="train")
+    val_dataset = CustomDataLoader(join(path, "val/"), img_size, dataset_type="val")
+    test_dataset = CustomDataLoader(join(path, "test/"), img_size, dataset_type="test")
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        pin_memory=True,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        pin_memory=True,
+    )
+
+    for data, target in train_loader:
+        print(f"Data shape: {data.shape}")
+        break

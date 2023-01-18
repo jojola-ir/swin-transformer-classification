@@ -30,8 +30,7 @@ class CustomSwinSegModel(nn.Module):
         self.model = swin
 
         self.decoder = nn.Sequential(nn.Conv2d(embed_dim, num_features, kernel_size=(1, 1), stride=(1, 1)),
-                                     nn.PixelShuffle(upscale_factor=upscale_factor),
-                                     nn.Conv2d(3, dim, kernel_size=(1, 1), stride=(1, 1)))
+                                     nn.PixelShuffle(upscale_factor=upscale_factor))
 
     def forward(self, x):
         x = self.model(x).last_hidden_state
