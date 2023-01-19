@@ -1,6 +1,5 @@
 '''Dataset splitter'''
 import argparse
-import os
 from glob import iglob
 
 import imageio.core.util
@@ -172,6 +171,9 @@ def main():
     test = args.test
     output = args.output
 
+    if os.path.exists(output) is False:
+        os.makedirs(output)
+
     test_rate = args.testrate
     clear = args.clear
 
@@ -184,3 +186,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+import os

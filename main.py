@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import argparse
 import os
 from os.path import join
@@ -7,9 +8,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torchmetrics
 from torch.utils.data import DataLoader
+from torchmetrics import PeakSignalNoiseRatio as PSNR
 from tqdm import tqdm
 
-from dataloader import CustomDataLoader, split_classification_loader
+from dataloader import CustomDataLoader, get_noisy_image, split_classification_loader
+from losses import DiceLoss
 from metrics import SoftDiceScore
 from model import build_model
 
@@ -31,10 +34,11 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
         accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=num_classes)
         recall = torchmetrics.Recall(task="multiclass", num_classes=num_classes)
     elif model_type == "segmentation":
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = DiceLoss()
     elif model_type == "regression":
         criterion = nn.MSELoss()
         mse = torchmetrics.MeanSquaredError()
+        psnr = PSNR()
     else:
         raise ValueError("Model type not recognized")
 
@@ -50,7 +54,10 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
             for data, target in loader:
                 loader.set_description(f"Epoch {epoch} / {epochs}")
                 # Move the data to the device
-                data, target = data.to(device), target.to(device)
+                if model_type == "classification" or model_type == "segmentation":
+                    data, target = data.to(device), target.to(device)
+                elif model_type == "regression":
+                    data, target = data.to(device), get_noisy_image(target).to(device)
 
                 # Zero the gradients
                 optimizer.zero_grad()
@@ -72,13 +79,13 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
                 # Update the weights
                 optimizer.step()
 
-                f1_score = f1(pred.detach(), target).numpy()
+                f1_score = f1(pred.detach(), target.detach()).numpy()
                 f1_list.append(f1_score)
 
                 # Print the loss and metrics
                 if model_type == "classification":
-                    acc = accuracy(pred, target).numpy()
-                    rec = recall(pred, target).numpy()
+                    acc = accuracy(pred.detach(), target.detach()).numpy()
+                    rec = recall(pred.detach(), target.detach()).numpy()
 
                     acc_list.append(acc)
                     rec_list.append(rec)
@@ -90,8 +97,9 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
                 elif model_type == "segmentation":
                     loader.set_postfix(loss=loss.item(), f1=f1_score)
                 elif model_type == "regression":
-                    mse_score = mse(output.detach(), target).numpy()
-                    loader.set_postfix(loss=loss.item(), mse=mse_score)
+                    mse_score = mse(output.detach(), target.detach()).numpy()
+                    train_psnr = psnr(pred.detach(), target.detach()).numpy()
+                    loader.set_postfix(loss=loss.item(), mse=mse_score, psnr=train_psnr)
 
         if epoch % 1 == 0:
             torch.save(model.state_dict(), join(results_path, f"model_{model_type}.pth"))
@@ -122,6 +130,7 @@ def validation(model, val_loader, num_classes, model_type, device):
     elif model_type == "regression":
         criterion = nn.MSELoss()
         mse = torchmetrics.MeanSquaredError()
+        psnr = PSNR()
     else:
         raise ValueError("Model type not recognized")
 
@@ -136,7 +145,10 @@ def validation(model, val_loader, num_classes, model_type, device):
         for data, target in loader:
             loader.set_description("Validation")
             # Move the data to the device
-            data, target = data.to(device), target.to(device)
+            if model_type == "classification" or model_type == "segmentation":
+                data, target = data.to(device), target.to(device)
+            elif model_type == "regression":
+                data, target = data.to(device), get_noisy_image(target).to(device)
 
             # Forward pass
             if model_type == "classification":
@@ -146,7 +158,7 @@ def validation(model, val_loader, num_classes, model_type, device):
                 output = model(data)
                 pred = output
 
-            f1_score = f1(pred.detach(), target).numpy()
+            f1_score = f1(pred.detach(), target.detach()).numpy()
             f1_list.append(f1_score)
 
             # Print the loss and metrics
@@ -157,7 +169,8 @@ def validation(model, val_loader, num_classes, model_type, device):
                 acc_list.append(acc)
                 rec_list.append(rec)
             elif model_type == "regression":
-                mse_score = mse(output.detach(), target).numpy()
+                mse_score = mse(output.detach(), target.detach()).numpy()
+                val_psnr = psnr(pred.detach(), target.detach()).numpy()
 
             if criterion is not None:
                 # Compute the loss
@@ -171,7 +184,7 @@ def validation(model, val_loader, num_classes, model_type, device):
                 elif model_type == "segmentation":
                     loader.set_postfix(loss=loss.item(), f1=f1_score)
                 elif model_type == "regression":
-                    loader.set_postfix(loss=loss.item(), mse=mse_score)
+                    loader.set_postfix(loss=loss.item(), mse=mse_score, val_psnr=val_psnr)
             else:
                 if model_type == "classification":
                     loader.set_postfix(accuracy=acc_list / len(acc_list),
@@ -196,12 +209,12 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
             print(data.shape)
             break
 
-        dim = target.shape[1]
-
     elif model_type == "segmentation" or model_type == "regression":
-        train_dataset = CustomDataLoader(join(path_to_data, "train/"), img_size, dataset_type="train")
-        val_dataset = CustomDataLoader(join(path_to_data, "val/"), img_size, dataset_type="val")
-        test_dataset = CustomDataLoader(join(path_to_data, "test/"), img_size, dataset_type="test")
+        train_dataset = CustomDataLoader(join(path_to_data, "train/"), img_size, dataset_type="train",
+                                         model_type=model_type)
+        val_dataset = CustomDataLoader(join(path_to_data, "val/"), img_size, dataset_type="val", model_type=model_type)
+        test_dataset = CustomDataLoader(join(path_to_data, "test/"), img_size, dataset_type="test",
+                                        model_type=model_type)
 
         train_loader = DataLoader(
             train_dataset,
@@ -226,17 +239,23 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
             print(f"Data shape: {data.shape}")
             break
 
-        dim = target.shape[1]
+    dim = target.shape[1]
 
     # Define the model
     model = build_model(model_name=model_name, model_type=model_type, dim=dim).to(device)
+
+    print(model)
+
+    # for name, child in model.swin.named_children():
+    #     for param in child.parameters():
+    #         param.requires_grad = False
 
     # Define the optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     print("Data loaded")
 
-    print(model)
+    # print(model)
 
     p = sum([p.numel() for p in model.parameters()])
     print(f"Number of parameters: {p}")
@@ -257,7 +276,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", "-e", type=int, default=30, help="Number of epochs")
     parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument("--results", type=str, default="./results/", help="Path to results")
-    parser.add_argument("--img_size", type=int, default=224, help="Image size")
+    parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--model_name", type=str, default="tiny", help="Model name")
     parser.add_argument("--segmentation", "-s", action="store_true", help="Segmentation")
     parser.add_argument("--regression", "-r", action="store_true", help="Regression")

@@ -52,6 +52,7 @@ class SoftDiceScore(nn.Module):
     '''
     soft-dice loss, useful in binary segmentation
     '''
+
     def __init__(self,
                  p=1,
                  smooth=1):

@@ -31,11 +31,12 @@ def train_transformation(img_size):
         image: image, np.array
     """
     transform = transforms.Compose([
+        transforms.Resize(256),
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                      std=[0.229, 0.224, 0.225]),
     ])
     return transform
 
@@ -50,8 +51,8 @@ def test_transformation(img_size):
         transforms.Resize(256),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                      std=[0.229, 0.224, 0.225]),
     ])
     return transform
 
@@ -106,13 +107,16 @@ def split_classification_loader(path, img_size, batch_size):
 
 
 class CustomDataLoader(Dataset):
-    def __init__(self, folder_path, img_size, dataset_type):
+    def __init__(self, folder_path, img_size, dataset_type, model_type):
         super(CustomDataLoader, self).__init__()
         self.img_files = glob.glob(os.path.join(folder_path, "images/", "*.png"))
         self.mask_files = []
 
         for img_path in self.img_files:
-            self.mask_files.append(os.path.join(folder_path, "masks/", os.path.basename(img_path)))
+            if model_type == "classification" or model_type == "segmentation":
+                self.mask_files.append(os.path.join(folder_path, "masks/", os.path.basename(img_path)))
+            elif model_type == "regression":
+                self.mask_files = self.img_files
 
         self.transform_train = train_transformation(img_size)
         self.transform_test = test_transformation(img_size)
@@ -123,18 +127,35 @@ class CustomDataLoader(Dataset):
         img_path = self.img_files[index]
         mask_path = self.mask_files[index]
         if self.dataset_type == "train":
-            data = self.transform_train(Image.open(img_path).convert("RGB"))
-            label = self.transform_train(Image.open(mask_path).convert("RGB"))
+            data = self.transform_train(Image.open(img_path).convert("L"))
+            label = self.transform_train(Image.open(mask_path).convert("L"))
         elif self.dataset_type == "val" or self.dataset_type == "test":
-            data = self.transform_test(Image.open(img_path).convert("RGB"))
-            label = self.transform_test(Image.open(mask_path).convert("RGB"))
+            data = self.transform_test(Image.open(img_path).convert("L"))
+            label = self.transform_test(Image.open(mask_path).convert("L"))
         else:
             raise ValueError("Invalid dataset type")
+
+        data /= 255.0
+        label /= 255.0
+
         return data, label
 
     def __len__(self):
         return len(self.img_files)
 
+
+def get_noisy_image(image, noise_parameter=0.2):
+    """Adds noise to an image.
+
+    Args:
+        image: image, np.array with values from 0 to 1
+    """
+    image_shape = image.shape
+
+    noise = torch.normal(0, noise_parameter, image_shape)
+    noisy_image = (image + noise).clip(0, 1)
+
+    return noisy_image
 
 
 if __name__ == "__main__":
