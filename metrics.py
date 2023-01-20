@@ -48,28 +48,19 @@ class AveragedHausdorffLoss(nn.Module):
         return res
 
 
-class SoftDiceScore(nn.Module):
-    '''
-    soft-dice loss, useful in binary segmentation
-    '''
+class DiceScore(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(DiceScore, self).__init__()
 
-    def __init__(self,
-                 p=1,
-                 smooth=1):
-        super(SoftDiceScore, self).__init__()
-        self.p = p
-        self.smooth = smooth
+    def forward(self, inputs, targets, smooth=1):
+        # comment out if your model contains a sigmoid or equivalent activation layer
+        inputs = torch.sigmoid(inputs)
 
-    def forward(self, logits, labels):
-        '''
-        inputs:
-            logits: tensor of shape (N, H, W, ...)
-            label: tensor of shape(N, H, W, ...)
-        output:
-            loss: tensor of shape(1, )
-        '''
-        probs = torch.sigmoid(logits)
-        numer = (probs * labels).sum()
-        denor = (probs.pow(self.p) + labels.pow(self.p)).sum()
-        dice = (2 * numer + self.smooth) / (denor + self.smooth)
+        # flatten label and prediction tensors
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+
+        intersection = (inputs * targets).sum()
+        dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+
         return dice

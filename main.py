@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from dataloader import CustomDataLoader, get_noisy_image, split_classification_loader
 from losses import DiceLoss
-from metrics import SoftDiceScore
+from metrics import DiceScore
 from model import build_model
 
 
@@ -42,7 +42,9 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
     else:
         raise ValueError("Model type not recognized")
 
-    f1 = SoftDiceScore()
+    f1 = DiceScore()
+
+    loss_list = []
 
     acc_list = []
     rec_list = []
@@ -72,6 +74,7 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
 
                 # Compute the loss
                 loss = criterion(output, target)
+                loss_list.append(loss.item())
 
                 # Backward pass
                 loss.backward()
@@ -109,6 +112,16 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
 
     torch.save(model.state_dict(), join(results_path, f"model_{model_type}.pth"))
 
+    fig, ax = plt.subplots()
+    ax.plot(loss_list, color='red', label="Loss")
+    ax.plot(acc_list, linestyle='--', color='orange', label='Accuracy')
+    ax.plot(rec_list, linestyle='--', color='blue', label='Recall')
+    ax.plot(f1_list, linestyle='--', color='green', label='Dice Score')
+
+    legend = ax.legend(loc='upper right', shadow=True)
+    legend.get_frame().set_facecolor('#eafff5')
+    plt.savefig(join(results_path, f"curves.png"))
+
 
 def validation(model, val_loader, num_classes, model_type, device):
     """Validate the model.
@@ -134,7 +147,7 @@ def validation(model, val_loader, num_classes, model_type, device):
     else:
         raise ValueError("Model type not recognized")
 
-    f1 = SoftDiceScore()
+    f1 = DiceScore()
 
     acc_list = []
     rec_list = []
@@ -245,6 +258,10 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     model = build_model(model_name=model_name, model_type=model_type, dim=dim).to(device)
 
     print(model)
+
+    print(f"Train set size: {len(train_loader.dataset)}")
+    print(f"Validation set size: {len(val_loader.dataset)}")
+    print(f"Test set size: {len(test_loader.dataset)}")
 
     # for name, child in model.swin.named_children():
     #     for param in child.parameters():
