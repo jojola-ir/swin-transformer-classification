@@ -6,6 +6,8 @@ import imageio.v2 as imageio
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torchvision.transforms.functional import pil_to_tensor
+
 from PIL import Image
 from torch.utils.data import Dataset, random_split, DataLoader
 
@@ -24,7 +26,7 @@ def get_noisy_image(image, noise_parameter=0.2):
     return noisy_image
 
 
-def train_transformation(img_size):
+def train_transformation(img_size, mean, std):
     """Applies transformations to an image.
 
     Args:
@@ -35,13 +37,13 @@ def train_transformation(img_size):
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
-        #                      std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=mean,
+        #                      std=std),
     ])
     return transform
 
 
-def test_transformation(img_size):
+def test_transformation(img_size, mean, std):
     """Applies transformations to an image.
 
     Args:
@@ -51,8 +53,8 @@ def test_transformation(img_size):
         transforms.Resize(256),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
-        #                      std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=mean,
+        #                      std=std),
     ])
     return transform
 
@@ -69,17 +71,31 @@ def split_classification_loader(path, img_size, batch_size):
     """
 
     # Define the transforms
-    transform_train = train_transformation(img_size)
-    transform_test = test_transformation(img_size)
+    train_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.RandomResizedCrop(img_size),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
+
+    test_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
 
     # Load the dataset
     train_path = join(path, "train/")
     test_path = join(path, "test/")
 
     train_dataset = torchvision.datasets.ImageFolder(
-        root=train_path, transform=transform_train)
+        root=train_path, transform=train_transform)
     test_dataset = torchvision.datasets.ImageFolder(
-        root=test_path, transform=transform_test)
+        root=test_path, transform=test_transform)
 
     train_size = int(0.8 * len(train_dataset))
     val_size = len(train_dataset) - train_size
@@ -118,25 +134,34 @@ class CustomDataLoader(Dataset):
             elif model_type == "regression":
                 self.mask_files = self.img_files
 
-        self.transform_train = train_transformation(img_size)
-        self.transform_test = test_transformation(img_size)
-
+        self.img_size = img_size
         self.dataset_type = dataset_type
 
     def __getitem__(self, index):
         img_path = self.img_files[index]
         mask_path = self.mask_files[index]
+
+        image = Image.open(img_path).convert("L")
+        mask = Image.open(mask_path).convert("L")
+
+        transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
+
+        mean = transform(image).mean([1, 2])
+        std = transform(image).std([1, 2])
+
+        self.transform_train = train_transformation(self.img_size, mean, std)
+        self.transform_train = test_transformation(self.img_size, mean, std)
+
         if self.dataset_type == "train":
-            data = self.transform_train(Image.open(img_path).convert("L"))
-            label = self.transform_train(Image.open(mask_path).convert("L"))
+            data = self.transform_train(image)
+            label = self.transform_train(mask)
         elif self.dataset_type == "val" or self.dataset_type == "test":
-            data = self.transform_test(Image.open(img_path).convert("L"))
-            label = self.transform_test(Image.open(mask_path).convert("L"))
+            data = self.transform_test(image)
+            label = self.transform_test(mask)
         else:
             raise ValueError("Invalid dataset type")
-
-        data /= 255.0
-        label /= 255.0
 
         return data, label
 

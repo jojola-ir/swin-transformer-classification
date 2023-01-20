@@ -98,7 +98,8 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
                                        recall=rec_list / len(rec_list),
                                        f1=f1_list / len(f1_list))
                 elif model_type == "segmentation":
-                    loader.set_postfix(loss=loss.item(), f1=f1_score)
+                    loader.set_postfix(loss=loss.item(), f1=f1_score, data_min=data.min().item(),
+                                       data_max=data.max().item())
                 elif model_type == "regression":
                     mse_score = mse(output.detach(), target.detach()).numpy()
                     train_psnr = psnr(pred.detach(), target.detach()).numpy()
@@ -163,6 +164,8 @@ def validation(model, val_loader, num_classes, model_type, device):
             elif model_type == "regression":
                 data, target = data.to(device), get_noisy_image(target).to(device)
 
+            print(data.mean([1, 2]), data.std([1, 2]))
+
             # Forward pass
             if model_type == "classification":
                 output = model(data).logits
@@ -213,7 +216,7 @@ def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_pat
     """Main function."""
 
     # Define the data loaders
-    _, _, _, num_classes = split_classification_loader(path_to_data, batch_size, img_size)
+    _, _, _, num_classes = split_classification_loader(path_to_data, img_size, batch_size)
     if model_type == "classification":
         train_loader, val_loader, test_loader, num_classes = split_classification_loader(path_to_data, img_size,
                                                                                          batch_size)
