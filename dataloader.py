@@ -152,7 +152,7 @@ class CustomDataLoader(Dataset):
         std = transform(image).std([1, 2])
 
         self.transform_train = train_transformation(self.img_size, mean, std)
-        self.transform_train = test_transformation(self.img_size, mean, std)
+        self.transform_test = test_transformation(self.img_size, mean, std)
 
         if self.dataset_type == "train":
             data = self.transform_train(image)
