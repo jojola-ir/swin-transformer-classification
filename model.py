@@ -18,9 +18,8 @@ class Identity(nn.Module):
 class CustomSwinSegModel(nn.Module):
     """Creates a custom model."""
 
-    def __init__(self, model_name, checkpoint, dim=3, upscale_factor=32):
+    def __init__(self, checkpoint, dim=3, upscale_factor=32):
         super(CustomSwinSegModel, self).__init__()
-        self.model_name = model_name
 
         # swin = SwinModel.from_pretrained(checkpoint)
         self.model = timm.create_model('swinv2_tiny_window16_256', pretrained=True, in_chans=dim, num_classes=0)
@@ -52,7 +51,7 @@ class CustomSwinSegModel(nn.Module):
         return x
 
 
-def build_model(model_name, model_type, dim):
+def build_model(model_type, dim):
     """Build a tiny Swin-Transformer.
     Args:
         model_name (str): The name of the model to build.
@@ -61,7 +60,7 @@ def build_model(model_name, model_type, dim):
     """
     cp = "microsoft/swin-tiny-patch4-window7-224"
     if model_type == "segmentation" or model_type == "regression":
-        model = CustomSwinSegModel(model_name, checkpoint=cp, dim=dim)
+        model = CustomSwinSegModel(checkpoint=cp, dim=dim)
         # model = SwinForMaskedImageModeling.from_pretrained("microsoft/swin-tiny-patch4-window7-224")
         # model.load_state_dict(torch.load("results/model_denoising_1500.pth"))
     elif model_type == "classification":

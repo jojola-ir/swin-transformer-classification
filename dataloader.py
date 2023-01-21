@@ -33,8 +33,8 @@ def train_transformation(img_size, mean, std):
         image: image, np.array
     """
     transform = transforms.Compose([
-        transforms.Resize(256),
         transforms.RandomResizedCrop(img_size),
+        transforms.RandomVerticalFlip(),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         # transforms.Normalize(mean=mean,
@@ -50,8 +50,7 @@ def test_transformation(img_size, mean, std):
         image: image, np.array
     """
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(img_size),
+        transforms.Resize(img_size),
         transforms.ToTensor(),
         # transforms.Normalize(mean=mean,
         #                      std=std),
@@ -129,10 +128,12 @@ class CustomDataLoader(Dataset):
         self.mask_files = []
 
         for img_path in self.img_files:
-            if model_type == "classification" or model_type == "segmentation":
+            if model_type == "segmentation":
                 self.mask_files.append(os.path.join(folder_path, "masks/", os.path.basename(img_path)))
             elif model_type == "regression":
                 self.mask_files = self.img_files
+            else:
+                raise ValueError("Invalid model type")
 
         self.img_size = img_size
         self.dataset_type = dataset_type

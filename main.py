@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import os
@@ -94,9 +95,9 @@ def train(model, train_loader, val_loader, optimizer, epochs, num_classes, devic
                     rec_list.append(rec)
                     f1_list.append(f1_score)
 
-                    loader.set_postfix(loss=loss.item(), accuracy=acc_list / len(acc_list),
-                                       recall=rec_list / len(rec_list),
-                                       f1=f1_list / len(f1_list))
+                    loader.set_postfix(loss=loss.item(), accuracy=np.array(acc_list) / len(acc_list),
+                                       recall=np.array(rec_list) / len(rec_list),
+                                       f1=np.array(f1_list) / len(f1_list))
                 elif model_type == "segmentation":
                     loader.set_postfix(loss=loss.item(), f1=f1_score, data_min=data.min().item(),
                                        data_max=data.max().item())
@@ -164,8 +165,6 @@ def validation(model, val_loader, num_classes, model_type, device):
             elif model_type == "regression":
                 data, target = data.to(device), get_noisy_image(target).to(device)
 
-            print(data.mean([1, 2]), data.std([1, 2]))
-
             # Forward pass
             if model_type == "classification":
                 output = model(data).logits
@@ -194,9 +193,9 @@ def validation(model, val_loader, num_classes, model_type, device):
 
                 # Print the loss and metrics
                 if model_type == "classification":
-                    loader.set_postfix(loss=loss.item(), accuracy=acc_list / len(acc_list),
-                                       recall=rec_list / len(rec_list),
-                                       f1=f1_list / len(f1_list))
+                    loader.set_postfix(loss=loss.item(), accuracy=acc,
+                                       recall=rec,
+                                       f1=f1)
                 elif model_type == "segmentation":
                     loader.set_postfix(loss=loss.item(), f1=f1_score)
                 elif model_type == "regression":
@@ -210,6 +209,8 @@ def validation(model, val_loader, num_classes, model_type, device):
                     loader.set_postfix(f1=f1_score)
                 elif model_type == "regression":
                     loader.set_postfix(mse=mse_score)
+
+    return np.array(acc_list) / len(acc_list), np.array(rec_list) / len(rec_list), np.array(f1_list) / len(f1_list)
 
 
 def main(path_to_data, batch_size, epochs, lr, model_name, img_size, results_path, model_type, device):
@@ -294,7 +295,7 @@ if __name__ == "__main__":
     parser.add_argument("--path_to_data", type=str, default="./data", help="Path to the data")
     parser.add_argument("--batch_size", "-b", type=int, default=32, help="Batch size")
     parser.add_argument("--epochs", "-e", type=int, default=30, help="Number of epochs")
-    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--results", type=str, default="./results/", help="Path to results")
     parser.add_argument("--img_size", type=int, default=256, help="Image size")
     parser.add_argument("--model_name", type=str, default="tiny", help="Model name")
